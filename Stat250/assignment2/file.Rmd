@@ -1,0 +1,147 @@
+---
+title: "Assignment2 Rpart"
+author: 
+  -"Mert Göksel"
+  -"Bilge Özkır"
+  -"Aisuluu Baktybekova"
+date: "6/14/2021"
+output: pdf_document
+---
+
+# Q3
+
+```{r}
+library(tidyverse, quietly = T)
+sweet.ind <- c(
+  5.2,
+  5.5,
+  6.0,
+  5.9,
+  5.8,
+  6.0,
+  5.8,
+  5.6,
+  5.6,
+  5.9,
+  5.4,
+  5.6,
+  5.8,
+  5.5,
+  5.3,
+  5.3,
+  5.7,
+  5.5,
+  5.7,
+  5.3,
+  5.9,
+  5.8,
+  5.8,
+  5.9
+)
+pectin <- c(
+  220,
+  227,
+  259,
+  210,
+  224,
+  215,
+  231,
+  268,
+  239,
+  212,
+  410,
+  256,
+  306,
+  259,
+  284,
+  383,
+  271,
+  264,
+  227,
+  263,
+  232,
+  220,
+  246,
+  241
+)
+df <- data.frame(pectin=pectin, sweet.ind=sweet.ind)
+
+#a
+fit1 <- fit <- lm(data = df, formula = sweet.ind~pectin)
+par(mfrow = c(2, 2))
+plot(fit1)
+
+#From residuals vs fitted we see that no apparent pattern exist but the line is
+#not smooth thus we cant say the data is linear. we can try transforming data
+
+#From qqplot we can suspect this being not normal as first 3 points are very 
+#far away from the line, testing with shapiro is advised.
+shapiro.test(fit1$residuals)
+#p value is bigger than 0.05 thus we can assume normality.
+
+#homogenity of variance is not constant. transformation required.
+
+#no points in leverage plot is higher or lesser than |3| thus is good.
+
+#Conclusion: transformation required, testing normality is advised.
+
+#Because these assumptions are required to have a model that works as intended.
+#Drawing a line is easy, but drawing a line that can give you good predictions is
+#after all what we are after.
+
+#b
+fit2 <- lm(data = df, formula = sweet.ind~log(pectin)) #this works better
+par(mfrow = c(2, 2))
+plot(fit2)
+#all extremities are lower in this version. Meaning this version of regression
+#is better than non log version
+fit2$call
+df %>% ggplot(aes(x=pectin, y=sweet.ind)) + geom_point() + 
+  geom_smooth(method = "lm", se = F, formula = y~x) + theme_light()
+
+#c
+summary(fit2)
+#both B0 and B1 have p values less than 0.05 thus they are both significant
+#R squared value is low thus this linear model doesnt have much precision
+#F statistic has value 6.889 with degrees of freedom 1, 22
+6.889 > df(0.05, 1, 22)
+#Thus at alpha = 0.05 this regression model is significant
+#Seems like a non linear model would fit better from graph
+
+#d
+anova(fit2)
+#as p value is less than 0.05 this model is significant.
+
+#e
+predict(fit2, newdata = data.frame(pectin=300))
+
+```
+\newpage
+# Q4
+
+```{r}
+df2 <- cbind(Mechanical=c(50,40), Electrical=c(30,30), Other=c(60,40))
+rownames(df2) <- c("Design1", "Design2")
+df2 <- as.table(df2)
+chisq.test(df2)
+#As p value is higher than 0.05 we can conclude that rows are independent
+```
+\newpage
+# Q5
+
+```{r}
+df3 <- cbind(Case=c(64,230-64), Control=c(270-134,134))
+rownames(df3) <- c("Exposed", "Unexposed")
+df3 <- as.table(df3)
+
+caseinex <- df3[1,1]/sum(df3[1,])
+caseinex
+
+odds <- (df3[1,1]/sum(df3[1,]))/(df3[2,1]/sum(df3[2,]))
+odds
+#odds ratio here means that being a case while exposed to caffeine is 0.5783.. 
+#times more likely than being a case when not exposed. Meaning caffeine lowers 
+#the odds of having parkinsons. If we are talking just from this table then this is
+#indeed the case but to have a solid idea more testing and research is required.
+```
+

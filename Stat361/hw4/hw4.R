@@ -1,0 +1,196 @@
+setwd("./R/Stat361/hw4/")
+df <- read.csv("./UKDriverDeaths.csv")
+library(tidyverse)
+library(e1071)
+library(caret)
+
+df$X <- NULL
+df <- df$x
+
+######################################################
+## Q1:
+
+# A
+n <- length(df)
+sample_mean <- mean(df)
+sample_sd <- sd(df)
+
+M <- 1000
+res_mean <- numeric(M)
+res_sd <- numeric(M)
+
+for(i in 1:M){
+  indexes <- sample(1:n, size=n, replace = T)
+  x <- df[indexes]
+  res_mean[i] <- mean(x)
+  res_sd[i] <- sd(x)
+}
+
+bias_mean <- sample_mean - mean(res_mean)
+bias_sd <- sample_sd - mean(res_sd)
+
+
+# Standard error
+mean(res_sd)
+
+#bias
+bias_mean 
+
+bias_sd
+
+#our bias is ~.5 with sd ~1.5
+
+# B
+
+kurtosis_fnc <- function(x,i){
+  n <- length(x)
+  sample_krts <- mean((x[i] - mean(x[i]))^4) / var(x[i])^2
+  return(sample_krts)
+}
+
+
+kurtosis <- c()
+sample_kurt <- kurtosis_fnc(df)
+
+for(i in 1:n){
+  kurtosis[i] <- kurtosis_fnc(df[-i])
+}
+
+kurtosis %>% data.frame(x=.) %>% ggplot(aes(x=x)) + xlim(c(2.9, 3.2)) +
+  geom_histogram(aes(y = ..density..), color='Black', 
+                 fill='Red', alpha=.7, bins = 10)
+est_kurt <- mean(kurtosis)
+se_kurt <- sqrt((n-1) * mean((sample_kurt - mean(kurtosis))^2))
+bias_kurt <- (n-1) * (est_kurt - sample_kurt)
+
+
+result <- c(sample_kurt, est_kurt, se_kurt, bias_kurt)
+names(result) <- c("sample", "estimated", "std.error","bias")
+result
+
+# C
+sample_skew <- skewness(df)
+res_skew <- numeric(length(df))
+
+for(i in 1:length(df)){
+  x <- df[-i]
+  res_skew[i] <- skewness(x)
+}
+
+hist(res_skew)
+est_skew <- mean(res_skew)
+bias_skew <- sample_skew - mean(res_skew)
+se_skew <- sd(res_skew)
+
+# D
+
+upper <- est_skew + qnorm(0.95) * se_skew
+lower <- est_skew - qnorm(0.95) * se_skew
+
+upper
+lower
+
+######################################################
+## Q2:
+
+titanic <- read.csv("./titanic.csv")
+head(titanic)
+titanic$X <- NULL
+
+# A
+
+model <- glm(Survived~., data=titanic)
+model.coef <- model$coefficients
+jack.coef <- matrix(0, ncol = 3, nrow=nrow(titanic))
+
+for(i in 1:nrow(titanic)){
+  x <- titanic[-i,]
+  m <- glm(Survived~., data=x)
+  jack.coef[i,] <- m$coefficients 
+}
+
+rbind(model.coef, jack.coef= apply(jack.coef, 2, mean))
+
+# B 
+
+indexes <- sample(1:nrow(titanic), size=floor(nrow(titanic)*8/10), replace = F)
+t.train <- titanic[indexes,]
+t.test <- titanic[-indexes,]
+
+model1 <- formula(Survived~.)
+model2 <- formula(Survived~Sex*Age+Sex+Age)
+model3 <- formula(Survived~Age**2+Sex+Age)
+model4 <- formula(Survived~Age**2 + Sex + Age + Age**3)
+
+res1 <- matrix(0, ncol=11, nrow=nrow(t.train))
+res2 <- matrix(0, ncol=11, nrow=nrow(t.train))
+res3 <- matrix(0, ncol=11, nrow=nrow(t.train))
+res4 <- matrix(0, ncol=11, nrow=nrow(t.train))
+
+real.res <- factor(t.test$Survived)
+
+for(i in 1:nrow(t.train)){
+  x <- t.train[-i,]
+  
+  m1 <- glm(model1, data=x)
+  m2 <- glm(model2, data=x)
+  m3 <- glm(model3, data=x)
+  m4 <- glm(model4, data=x)
+  
+  m1.res <- factor(ifelse(predict(m1, t.test, type='response')>=.5, 1, 0))
+  m2.res <- factor(ifelse(predict(m2, t.test, type='response')>=.5, 1, 0))
+  m3.res <- factor(ifelse(predict(m3, t.test, type='response')>=.5, 1, 0))
+  m4.res <- factor(ifelse(predict(m4, t.test, type='response')>=.5, 1, 0))
+  
+  res1[i,] <- confusionMatrix(m1.res, real.res)$byClass
+  res2[i,] <- confusionMatrix(m2.res, real.res)$byClass
+  res3[i,] <- confusionMatrix(m3.res, real.res)$byClass
+  res4[i,] <- confusionMatrix(m4.res, real.res)$byClass
+}
+
+
+nam <- names(confusionMatrix(factor(sample(titanic$Survived)), factor(titanic$Survived))$byClass)
+colnames(res1) <- nam
+colnames(res2) <- nam
+colnames(res3) <- nam
+colnames(res4) <- nam
+
+data.frame(model1 = apply(res1, 2, mean),
+           model2 = apply(res2, 2, mean),
+           model3 = apply(res3, 2, mean),
+           model4 = apply(res4, 2, mean))
+
+# It seems that the added terms do not affect the model in the slightest. 
+# This was expected due to multicolinearity.
+
+######################################################
+## Q3:
+attach(attitude)
+library(boot)
+
+# A
+
+stat.f <- function(f, x, i) {
+  return(coef(lm(f, data=x[i,])))
+}
+
+boot <- boot(data = attitude, statistic = stat.f, R = 1000, f = rating~complaints+privileges+learning)
+lm(rating~complaints+learning+privileges, data=attitude)$coefficients
+boot
+
+# They are the same.
+
+# B
+
+hist(boot$t[,1], col="Yellow", freq=F)
+lines(x=density(x=boot$t[,1]))
+
+hist(boot$t[,2], col="Yellow", freq=F)
+lines(x=density(x=boot$t[,2]))
+
+hist(boot$t[,3], col="Yellow", freq=F)
+lines(x=density(x=boot$t[,3]))
+
+hist(boot$t[,4], col="Yellow", freq=F)
+lines(x=density(x=boot$t[,4]))
+

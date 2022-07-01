@@ -1,0 +1,426 @@
+---
+title: "R Notebook"
+author: "Mert Göksel"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+```{r}
+suppressPackageStartupMessages(library(openxlsx))
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(caret))
+suppressPackageStartupMessages(library(lmtest))
+suppressPackageStartupMessages(library(car))
+suppressPackageStartupMessages(library(corrplot))
+suppressPackageStartupMessages(library(leaps))
+suppressPackageStartupMessages(library(stats))
+suppressPackageStartupMessages(library(olsrr))
+suppressPackageStartupMessages(library(ResourceSelection))
+suppressPackageStartupMessages(library(pROC))
+options(scipen=7)
+```
+
+# Question 1
+
+```{r}
+titanic <- openxlsx::read.xlsx("./titanic.xlsx")
+head(titanic)
+
+titanic <- drop_na(titanic)
+
+titanic_train_indexes <- sample(1:nrow(titanic), 
+                        floor(nrow(titanic)*8/10)) #80% is train
+titanic_train <- titanic[titanic_train_indexes,]
+titanic_test <- titanic[-titanic_train_indexes,]
+```
+
+## Part A
+
+```{r}
+model.titanic <- glm(Survived~., data=titanic_train, family="binomial")
+
+summary(model.titanic)
+```
+
+From this model, our response function is;
+
+```{r}
+cat("logodds =\n")
+cat(paste(row.names(summary(model.titanic)$coefficients),
+          summary(model.titanic)$coefficients[,1], sep="*"),sep="+\n")
+```
+
+## Part B
+
+We have our parameters above, these are for the logodds. Meaning if above function is $BX$, then;
+
+$$
+\begin{aligned}
+&logodds = BX \\
+&\Rightarrow \; ln(\frac{\pi(x)}{1-\pi(x)}) = BX \\
+&\Rightarrow \; \pi(x) = \frac{e^{BX}}{1+e^{BX}} \\
+&\Rightarrow \; \pi(x) = \frac{1}{1+e^{-BX}}
+\end{aligned}
+$$
+
+From this formula we can interpret these coefficient as following: - When BX = logodds, unit of increase in any variable will increase/decrease the logodds by the respective coefficient. Meaning, the odds will be affected as much as $e^{B_k}$ - On the other side, if we are looking at probability formula the change in the probability will be; 
+
+$$
+\begin{aligned}
+\\
+When\;x_i &\Rightarrow x_i+1 \\
+B_i * x_i &\Rightarrow B_i * x_i+B_i \\
+\pi(x) &\Rightarrow \frac{1}{1+e^{-(B_ix_i + B_i)}}
+\end{aligned}
+$$
+
+These apply for each parameter.
+
+## Part C
+```{r}
+given <- data.frame(Pclass=3, Sex="female", Age=35, SibSp=0, Parch=0, Fare=75, Embarked="C") 
+ifelse((predict(model.titanic, given, type="response") >= 0.5)[[1]], 1, 0)
+```
+
+## Part D
+
+We will apply wald test to all parameters with size $\alpha = 0.01$
+
+$$
+Reject \; H_0 \Rightarrow |z^*| > z_{\frac{1- \alpha}{2}}
+$$
+```{r}
+chi.crit <- qnorm(0.01/2, lower.tail = 0)
+
+data.frame(z=summary(model.titanic)$coefficients[,3]) %>% 
+  mutate(z_star = abs(z), reject = ifelse(z_star > chi.crit, 1, 0))
+```
+
+Wald test tells us that **Parch, Fare and Embarked** are insignificant variables and thus needs to be dropped
+
+## Part E
+
+To test the overall significance of the model we have to use **Likelihood** test
+
+```{r}
+summary(model.titanic)
+```
+
+We know that likelihood of the model will be used as following to test the significance;
+
+$$LR \sim \chi^{2}_{0.95, 8}$$
+$$LR=2ln(\frac{L(FM)}{L(RM)})$$
+
+```{r}
+model.titanic.reduced <- glm(Survived~1, data=titanic_train, family = 'binomial')
+
+summary(model.titanic.reduced)
+
+lr <- 2*(logLik(model.titanic)[1] - logLik(model.titanic.reduced)[1])
+
+lr
+
+pchisq(454.837105802761, df = 8, lower.tail = 0)
+```
+
+well, since this test score is basically 0 and thus $<0.05$ we will reject $H_0$ and say that this model is significant.
+
+## Part F
+
+In order to get confidence intervals for the parameters we will use this formula
+
+$$
+\hat{\beta}_k \pm z_{\frac{1-\alpha}{2}}.se(\hat{\beta}_k)
+$$
+
+```{r}
+conf <- as.data.frame(summary(model.titanic)$coefficients) %>% 
+  mutate(std.error = `Std. Error`, z.val = `z value`, `z value` = NULL, 
+         `Std. Error` = NULL) %>% 
+  select(Estimate, std.error, z.val) %>% 
+  mutate(conf.int_lower = Estimate-qnorm(0.05/2, lower.tail = 0)*std.error,
+         conf.int_higher = Estimate+qnorm(0.05/2, lower.tail = 0)*std.error)
+
+conf
+```
+
+The confidence intervals with size $\alpha$ gives us the possible values of the said variable. Generally, if this confidence interval includes 0 as a possible value then that variable is insignificant.
+
+## Part G
+
+$$
+\begin{aligned}
+confidence\; interval \Rightarrow \; &lower < \;\beta_i < higher  \\\\
+\Rightarrow \; &e^{lower} < e^{\beta_i} < e^{higher} \\\\
+\Rightarrow \; &\frac{e^{lower}}{e^{\beta_i}+1} < \;\frac{e^{\beta_i}}{{e^{\beta_i}+1}} < \frac{e^{higher}}{{e^{\beta_i}+1}}
+\end{aligned}
+$$
+
+```{r}
+conf %>% mutate(conf.int_lower_exponential = exp(conf.int_lower)/(exp(Estimate)+1), 
+                conf.int_higher_exponential = exp(conf.int_higher)/(exp(Estimate)+1))
+```
+
+After this transformation now this confidence interval became the probabilities confidence interval.
+
+## Part H
+
+```{r}
+hoslem.test(titanic_train$Survived, model.titanic$fitted.values)
+```
+
+Since our value is more extreme we will reject $H_0$ and say that model is not a good fit.
+
+## Part I
+
+```{r}
+predictions <- ifelse(predict(model.titanic, titanic_test %>% 
+                                select(-Survived), type='response') > 0.5, 1, 0)
+
+model.df <- data.frame(real=titanic_test$Survived, prediction=predictions)
+
+t(table(model.df))
+
+sensitivity <- 44/(44+14) 
+specificity <- 66/(66+19) 
+prevalence <- (66+44)/(66+14+19+44) 
+noinfrate <- (66+19)/(66+14+19+44)
+
+ppv <- sensitivity*prevalence/((sensitivity+prevalence)+
+                                 ((1-specificity)*(1-prevalence))) 
+npv <- sensitivity*(1-prevalence)/(((1-sensitivity)+prevalence)+
+                                     ((specificity)*(1-prevalence)))
+
+detection.rate <- 44/(66+14+19+44) 
+detection.prevalence <- (44+14)/(66+14+19+44) 
+balanced.acc <- (sensitivity+specificity)/2 
+precision = 44/(14+44) 
+recall = 44/(19+44)
+
+sensitivity 
+specificity 
+noinfrate 
+prevalence 
+ppv 
+npv 
+detection.rate 
+detection.prevalence 
+balanced.acc 
+precision 
+recall
+
+confusionMatrix(factor(model.df$prediction), factor(model.df$real), positive = "0")
+```
+
+same.
+
+## Part J
+
+
+```{r}
+g <- roc(Survived ~ model.titanic$fitted.values, data=titanic_train, quiet = TRUE) 
+plot(g) 
+points(.8,.8) 
+abline(0.8,0) 
+abline(v=0.8) 
+abline(0,1)
+```
+
+0.8 for both sensitivity and specificity seems like the most efficient point. This plot visualizes the trade off between sensitivity and specificity, best place is the most left upper corner.
+
+# Q2
+
+## Part A
+
+### Forward Selection
+
+![forward.png](pictures/forward.png){width="200px"}
+\newline
+
+### Backwards elimination
+
+![backward.png](pictures/backward.png){width="200px"}
+\newline
+
+### Stepwise regression
+
+![stepwise.png](pictures/stepwise.png){width="300px"}
+\newline
+
+## Part B
+
+Model validation may not be mentioned alot in papers but its a must have component of model building as it is the process of making sure that model works and can be used in real life.
+
+## Part C
+
+-   Gender
+-   Age
+-   n.projects
+-   Graduation.CGPA
+-   haslover
+-   personality
+-   enthusiasm
+-   living.place
+-   living.conditions.score
+-   monthly.earnings
+-   has.necessary.equipment
+-   disability.severity
+
+## Part D
+
+Thats because we want to be adding variables less often than we remove them. If the p value for the entry is higher than p value for removal then that means we will needlessly increase the size of the model with not so good variables.
+
+# Q3
+
+```{r}
+train <- read.xlsx("./job_model_building_data.xlsx") 
+test <- read.xlsx("./job_validation_data.xlsx")
+
+head(train)
+```
+
+```{r}
+head(test)
+```
+
+## Part A
+
+```{r}
+pairs(train)
+
+corrplot(cor(train %>% select(-y)))
+```
+
+x3 & x4 seems to be highly correlated, there may be multicolinearity problem. Also in the plots, y~x3 and y~x4 looks near identical.
+
+```{r}
+vif(lm(y~., data=train))
+```
+
+These vif values are not that high. But if we wanted to be more conservative we could drop either x3 or x4.
+
+## Part B
+
+```{r}
+model.new <- lm(y~., data=train)
+
+summary(model.new)
+```
+
+To me it seems like x2 should be dropped. That is because 0 is within the confidence interval.
+
+## Part C
+
+```{r}
+number.of.predictors <- 4
+predictor.names <- colnames(train)[1:number.of.predictors]
+ind <- expand.grid(c(1,0), c(1,0), c(1,0), c(1,0))
+c <- c()
+for(i in 1:nrow(ind)){
+c[i] <- paste(predictor.names[as.logical(ind[i,])], collapse="+")
+}
+c[16] <- 1
+c <- c[order(nchar(c))]
+c <- paste("y ~", c)
+all <- data.frame(formula=rep(NA, 16), rsq.p= rep(NA, 16))
+for(i in 1:length(c)){
+    all$formula[i] <- c[i]
+    all$rsq.p[i] <- summary(lm(as.formula(c[i]), data=train))$adj.r.squared
+}
+```
+
+```{r}
+all$p <- c(1,2,2,2,2,3,3,3,3,3,3,4,4,4,4,5) 
+all
+```
+
+```{r}
+max.rsq <- group_by(all, p) %>% summarize(max.rsq=max(rsq.p)) 
+ggplot(all, aes(p, rsq.p)) + geom_point() + ylab("R2.adj(p)") + 
+  geom_line(data= max.rsq, aes(p,max.rsq))
+```
+
+When the formula is *y = x1 + x3 + x4* the $R^2_{adj}$ has the highest value.
+
+## Part D
+
+```{r}
+model <- lm(y~., data=train) 
+ols_step_both_p(model, pent = 0.05, prem = 0.1)$model
+```
+
+## Part E
+
+They are the same..
+
+## Part F
+
+```{r}
+model.new <- lm(y~.-x2, train) 
+PRESS <- function(model){ 
+  i <- residuals(model)/(1 - lm.influence(model)$hat) 
+  sum(i^2) 
+} 
+PRESS(model.new)
+```
+
+$$SSE: \; \sum (\hat{y} - \bar{y})^2$$
+$$MSE: \; \frac{SSE}{n-p}$$
+
+```{r}
+sse <- sum((model.new$fitted.values - train$y)**2) 
+sse
+
+mse <- sse/(nrow(train)-1)
+```
+
+## Part G
+
+```{r}
+par(mfrow=c(1,2)) 
+corrplot(cor(train %>% select(-y)), type="upper", title = "Train") 
+corrplot(cor(test %>% select(-y)), type="upper", title = "Test")
+```
+
+corplots are near identical with the sole difference being correlation of x2~x4
+
+## Part H
+
+```{r}
+summary(lm(y~.-x2, test))
+
+summary(model.new)
+```
+
+These two models look very alike but the importance of x4 seems to be much higher in the test model. This might mean that model is not correctly specified.
+
+data.frame(train=c(4.284, 0.94), test=c(4.072, 0.96), row.names = c("MSE", "Rsquared"))
+
+As we can see the values are near identical. This means the model has high chance to work with new data. It is useful.
+
+## Part I
+
+```{r}
+mspe <- sum((predict(model.new, test %>% 
+                       select(-y), type="response")-test$y)**2)/(nrow(test)-1)
+
+mspe 
+mse
+```
+
+mean squared errors are close also.
+
+## Part J
+
+```{r}
+df <- rbind(train, test) 
+model.full <- lm(y~.-x2, df)
+
+summary(model.new)$coefficients[,'Std. Error']
+
+data.frame(train = summary(model.new)$coefficients[,'Std. Error'], 
+           full = summary(model.full)$coefficients[,'Std. Error'])
+```
+
+All standard deviations are lower, although not that much.

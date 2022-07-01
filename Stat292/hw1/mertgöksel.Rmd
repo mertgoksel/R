@@ -1,0 +1,149 @@
+---
+title: "MertGöksel"
+author: "Mert Göksel"
+date: "4/29/2021"
+output: pdf_document
+---
+
+```{r}
+df <- read.table("/media/rootsyl/Aphostrof/Downloads/cps.txt")
+names <- c(
+  "EDUCATION",
+  "SOUTH",
+  "SEX",
+  "EXPERIENCE",
+  "UNION",
+  "WAGE",
+  "AGE",
+  "RACE",
+  "OCCUPATION",
+  "SECTOR",
+  "MARR"
+)
+names(df) <- names
+df$SOUTH <- factor(df$SOUTH)
+df$SEX <- factor(df$SEX)
+df$UNION <- factor(df$UNION)
+df$RACE <- factor(df$RACE)
+df$OCCUPATION <- factor(df$OCCUPATION)
+df$SECTOR <- factor(df$SECTOR)
+df$MARR <- factor(df$MARR)
+```
+# Question 1:
+```{r}
+
+#A:
+library(tidyverse)
+library(magrittr)
+
+df_new <- df %>% select(c("SEX", "EXPERIENCE", "WAGE", "AGE", "MARR")) 
+
+#B:
+
+df_new %>% select(where(is.numeric)) %>% cor() 
+
+#C:
+
+df_new_3 <- df %>% select(!c("SOUTH", "UNION", "MARR")) %>% 
+  filter(AGE > 30 & AGE < 50 & SECTOR == 2) 
+head(df_new_3)
+
+#D:
+
+df_new_3 %>% mutate(New_Column = WAGE / AGE) %>% 
+  filter(New_Column>0.25) %>% nrow() %>% 
+  cat("There are", ., "observations satisfying that condition")
+
+#E:
+
+df %>% filter(SEX==1) %>% aggregate(WAGE~OCCUPATION,., mean)
+
+#F:
+
+df %>% aggregate(SEX~MARR,.,table) #This table works :) 
+```
+# Question 2:
+```{r}
+
+library(ggplot2)
+
+#A:
+ggplot(df,aes(x=AGE, y=WAGE, color=SEX)) + geom_point() + 
+  scale_color_manual(values=c("Blue", "Red")) + ggtitle("Wage~Age")
+
+#I used blue and red for colors to be in sync with SEX
+#Apart from the outlier in the start, 
+#men seems to be higher paid as their age increases.
+
+#B:
+df %>% ggplot(aes(x = WAGE, color=RACE, size=.2)) +
+  geom_density(linetype = "dashed") + scale_linetype_discrete(3) + 
+  ggtitle("Wage density plot")
+
+#Most abundant race seems to be number 2
+
+#C:
+library(ggpubr)
+levels(df$OCCUPATION) <- c("Management", "Sales", "Clerical", 
+                           "Service", "Professional", "Other")
+levels(df$RACE) <- c("Other", "Hispanic", "White")
+df %>% ggplot(aes(x = RACE, y = WAGE, fill=RACE)) + 
+  geom_boxplot() + facet_wrap(vars(OCCUPATION)) + ylab("WAGE ($/hour)") +
+  ggtitle("Boxplots for WAGE")
+
+#In every plot except for "Professional" and "Service" it 
+#seems that White people are dominant.
+#D:
+a <- df %>% filter(SEX==0) %>% ggplot(aes(x=AGE)) + 
+  geom_histogram(fill="blue", bins = 20, color="black") +
+  ggtitle("Male Age counts")
+a
+
+b <- df %>% filter(SEX==1) %>% ggplot(aes(x=AGE)) + 
+  geom_histogram(fill="pink", bins = 20, color="black") +
+  ggtitle("Female Age counts")
+b
+
+library(gridExtra)
+
+grid.arrange(a, b, ncol=2)
+
+#Female sample is more than males when it comes 
+#to age>40 that means females live longer?
+
+library(ggmosaic)
+
+#E:
+df %>% ggplot() + geom_mosaic(aes(x=product(SECTOR), 
+                                  fill=RACE)) + theme_mosaic()
+#In every sector white is overwhelming against other races. 
+
+```
+# Question 3:
+```{r}
+set.seed(292)
+
+#A:
+obj1 <- list("X"=rnorm(1000), "Y"=rnorm(50, 10, 2), "Z"=runif(200,-5,20))
+lapply(obj1, mean)
+
+#B:
+obj2 <- matrix(obj1$X, ncol = 20, nrow=50)
+apply(obj2, 2, sd)  
+
+#C:
+obj3 <- data.frame(obj1$Z, let=rep(LETTERS[1:4], each=50))
+tapply(X = obj3$obj1.Z, INDEX = obj3$let, FUN=mean)
+
+#D:
+matrix(unlist(tapply(X = obj1$Y, INDEX = rep(1:5, each=10), FUN = summary)), 
+       ncol = 6, byrow = TRUE)[,c(1,6)]
+
+#This may be too complicated to read, so i give another solution
+
+ab <- obj1$Y %>% split(.,gl(5, 10)) %>% lapply(.,summary) %>% unlist(.) %>% 
+  matrix(ncol = 6, byrow = TRUE) 
+ab[,c(1,6)] 
+
+```
+

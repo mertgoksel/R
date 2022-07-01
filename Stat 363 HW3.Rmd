@@ -1,0 +1,81 @@
+---
+title: "Stat363 - HW3"
+author: "Mert Göksel"
+date: "1/3/2022"
+output: pdf_document
+---
+
+#Q2:
+
+##A:
+
+```{r, message=FALSE}
+library(openxlsx)
+setwd("~/Stat/R/Stat363/")
+grocery <- read.xlsx("./groceryretailer.xlsx")
+pairs(grocery)
+```
+
+x3 is a categorical variable and no linear relationship can be seen in any 
+scatter plot
+
+```{r, message=FALSE}
+library(corrplot)
+corrplot(cor(grocery))
+```
+
+y and x3 is highly correlated, x1 and x2 correlation to y is lower. 
+No multicolinearity is detected, the only high correlation is between x3 and y
+but x3 is a categorical value while y is a numerical one.
+
+##B:
+
+```{r, message=FALSE}
+model <- lm(y ~ ., data = grocery)
+library(car)
+vif(model)
+#1.008596 1.019598 1.014364 for reference.
+
+library(dplyr)
+cor(grocery)
+```
+
+We apply unit length scaling to grocery data and get the correlation matrix
+
+first of all get the sum of squares
+$$\sum (x_i - \bar x)^2$$ 
+for each column
+
+```{r}
+s11 <- sum((grocery$x1 - mean(grocery$x1))^2) 
+s22 <- sum((grocery$x2 - mean(grocery$x2))^2) 
+s33 <- sum((grocery$x3 - mean(grocery$x3))^2)
+sst <- sum((grocery$y - mean(grocery$y))^2)
+```
+
+instead of dividing with the sigma we divide with sqrt(sum of square) to get 
+unit length scaling
+
+```{r}
+grocery$x1 <- (grocery$x1 - mean(grocery$x1)) / sqrt(s11) 
+grocery$x2 <- (grocery$x2 - mean(grocery$x2)) / sqrt(s22) 
+grocery$x3 <- (grocery$x3 - mean(grocery$x3)) / sqrt(s33) 
+grocery$y <- (grocery$y - mean(grocery$y)) / sqrt(sst)
+```
+
+as we are interested in independent variables get x columns
+```{r}
+w <- as.matrix(grocery[,c(1,2,3)]) 
+```
+
+calculate the covariance matrix W'W
+```{r}
+t(w) %*% w 
+```
+
+get the inverse of covariance matrix to get vif matrix where m_ii is the ith vif value
+```{r}
+solve(t(w) %*% w) #look at the diagonal values!
+```
+
+vifs are same! we have done it!! :)

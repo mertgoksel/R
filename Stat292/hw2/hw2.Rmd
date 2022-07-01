@@ -1,0 +1,106 @@
+---
+title: "HW2 - MERT GÖKSEL"
+output:
+  html_document:
+    df_print: paged
+  HTML: default
+  pdf_document: default
+---
+```{r}
+df <- read.csv("~/Stat/R/Stat292/hw2/yelp_business.csv", header = T)
+library(tidyverse)
+```
+
+# Q1:
+```{r}
+#############################################
+##Q1:
+#A:
+las_vegas <- df %>% filter(city == "Las Vegas")
+
+#B:
+median(las_vegas$latitude)
+median(las_vegas$longitude)
+
+#C:
+library(leaflet)
+
+lf_vegas <- las_vegas %>% leaflet() %>%
+  addProviderTiles(providers$CartoDB) %>%
+  setView(lng = median(las_vegas$longitude), lat = median(las_vegas$latitude), 
+          zoom = 9) 
+lf_vegas %>% addCircles(lng = ~longitude, lat = ~latitude)
+
+#D:
+lf_vegas %>% addCircles(radius = sqrt(las_vegas$review_count))
+
+#E:
+library(randomcoloR)
+df %>% ggplot(aes(x = stars)) + 
+  geom_bar(fill = distinctColorPalette(k = length(levels(as.factor(df$stars))))) 
+#As stars is a categorical variable we can use histogram to see the counts of 
+#categories
+
+#F:
+df %>% ggplot(aes(x = review_count)) + 
+  geom_histogram(bins = 1000)
+#People do not tend to review places normally. Thus most places do not even 
+#have a single review.
+
+
+#G:
+firsthundred <- df[order(df$review_count, decreasing = T),] %>% head(100) 
+
+firsthundred %>% leaflet() %>% addProviderTiles("Esri") %>%
+  addMarkers(lng = firsthundred$longitude, lat = firsthundred$latitude)
+
+```
+
+# Q2:
+```{r}
+#############################################
+##Q2:
+library(PASWR)
+library(sqldf)
+
+#A:
+TitanicData_First10 <- sqldf("SELECT *
+                             FROM titanic3
+                             LIMIT 10")
+
+#B:
+TitanicSubset2Cols <- sqldf("SELECT pclass, survived
+                            FROM titanic3")
+
+#C:
+sqldf("SELECT COUNT(sex) FROM titanic3 WHERE sex='female'")
+
+#D:
+sqldf("SELECT COUNT() FROM titanic3 WHERE sex='female' AND embarked='Southampton'")
+
+#E:
+females <- sqldf("SELECT SUM(fare) FROM titanic3 WHERE sex='female'")[1,1]
+females
+males <- sqldf("SELECT SUM(fare) FROM titanic3 WHERE sex='male'")[1,1]
+males
+
+#F:
+sqldf("SELECT COUNT(DISTINCT cabin) FROM titanic3")
+
+#G:
+sqldf("SELECT COUNT() FROM titanic3 WHERE name like 'A%'")
+
+#H:
+sqldf("SELECT COUNT(body IS NULL) FROM titanic3")
+
+#I:
+sqldf("SELECT COUNT() * 1.0 / (SELECT COUNT(*) FROM titanic3) * 1.0 
+      AS result FROM titanic3
+      GROUP BY pclass")
+
+#J:
+sqldf("SELECT (SELECT AVG(age) FROM titanic3 WHERE sex='female' AND survived=1) AS female,
+      (SELECT AVG(age) FROM titanic3 WHERE sex='male' AND survived=1) AS male FROM titanic3 
+      LIMIT 1")
+
+```

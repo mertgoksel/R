@@ -1,0 +1,41 @@
+---
+title: "303-HW2-Rpart"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+## Set the seed and initialize vectors
+```{r}
+set.seed(303)
+x1 <- rgamma(1000, shape = 1.5, scale = .5)
+x2 <- rgamma(5000, shape = 1.5, scale = .5)
+```
+
+## Define negative loglikelihood function for gamma
+```{r}
+gamma_loglik <- function(parm,X){ 
+    alpha <- parm[1] 
+    beta <- parm[2] 
+    loglik <- sum(dgamma(X, shape=alpha, scale=beta, log=TRUE)) 
+    return(-loglik) 
+}
+```
+
+## Optimize for x1
+```{r, warning=FALSE}
+nlm(gamma_loglik, p = c(1,1), X = x1)
+```
+
+## Optimize for x2
+```{r, warning=FALSE}
+nlm(gamma_loglik, p = c(1,1), X = x2)
+```
+
+We see that more observations yield better estimations as these are done via 
+approximations. We know that the parameters are 1.5 & 0.5, and both results 
+are satisfactory. Rounding both to 1st digit yields the same results. But x2 
+has more precision becuase size is bigger.
+
+
